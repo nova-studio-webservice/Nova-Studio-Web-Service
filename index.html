@@ -19,8 +19,7 @@
         <div style="margin-bottom: 25px;">
             <label style="display: block; margin-bottom: 8px; font-weight: 500;">📧 電子郵件地址</label>
             <input type="email" id="userEmail" placeholder="請輸入您的電子郵件" required 
-                   style="width: 100%; padding: 14px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; box-sizing: border-box; transition: border-color 0.3s;">
-            <small style="color: #666; font-size: 14px;">我們會發送驗證碼到此信箱</small>
+                   style="width: 100%; padding: 14px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; box-sizing: border-box;">
         </div>
         
         <div style="margin-bottom: 25px;">
@@ -29,7 +28,7 @@
         </div>
         
         <button type="submit" id="getCodeBtn" 
-                style="width: 100%; padding: 16px; background: linear-gradient(135deg, #4285f4, #34a853); color: white; border: none; border-radius: 12px; font-size: 18px; font-weight: 600; cursor: pointer; transition: transform 0.2s;">
+                style="width: 100%; padding: 16px; background: linear-gradient(135deg, #4285f4, #34a853); color: white; border: none; border-radius: 12px; font-size: 18px; font-weight: 600; cursor: pointer;">
             🚀 立即取得驗證碼
         </button>
     </form>
@@ -51,12 +50,12 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        // ✅ 正確的 EmailJS 配置
+        // ✅ EmailJS 初始化 - 新 Template ID
         emailjs.init("To2oJpnpive7AotSz");
 
         const EMAILJS_CONFIG = {
-            serviceID: "service_f18cej6",    // ✅ 已修正！
-            templateID: "template_4d7ffsc",
+            serviceID: "service_f18cej6",
+            templateID: "template_85h7rrn",  // ✅ 新 Template ID！
             publicKey: "To2oJpnpive7AotSz"
         };
 
@@ -80,14 +79,20 @@
             status.style.border = `1px solid ${type === 'success' ? '#c3e6cb' : type === 'error' ? '#f5c6cb' : '#bee5eb'}`;
         }
 
+        // ✅ EmailJS 除錯加強版
         async function sendEmail(email, requestTime, code1, code2) {
+            console.log('🚀 EmailJS 發送測試：');
+            console.log('- Service:', EMAILJS_CONFIG.serviceID);
+            console.log('- Template:', EMAILJS_CONFIG.templateID);
+            console.log('- 收件人：', email);
+            console.log('- 驗證碼：', code1, code2);
+            
             try {
-                console.log('📤 發送郵件到：', email);
                 const response = await emailjs.send(
-                    EMAILJS_CONFIG.serviceID,  // service_f18cej6
+                    EMAILJS_CONFIG.serviceID,
                     EMAILJS_CONFIG.templateID,
                     {
-                        user: email,
+                        user: email.split('@')[0],        // 名字部分
                         request_time: requestTime,
                         code_1: code1,
                         code_2: code2,
@@ -95,13 +100,14 @@
                     },
                     EMAILJS_CONFIG.publicKey
                 );
-                console.log('✅ EmailJS 成功：', response.status);
+                
+                console.log('✅ EmailJS 成功！狀態：', response.status);
                 return response;
+                
             } catch (error) {
-                console.error('❌ EmailJS 錯誤：', error);
-                // 即使郵件失敗，驗證碼已儲存到 Firebase
-                console.log('💾 驗證碼已儲存到 Firebase，可用 Console 查看');
-                return { status: 200 };
+                console.error('❌ EmailJS 錯誤：', error.status, error.text);
+                showStatus('⚠️ 驗證碼已儲存，但郵件可能延遲，請稍後檢查收件匣', 'info');
+                return { status: 200 }; // 繼續流程
             }
         }
 
@@ -136,16 +142,14 @@
                     second: '2-digit'
                 });
 
-                console.log('🔑 你的驗證碼：', code1, ' ', code2);
-                console.log('📧 發送至：', email);
+                console.log('🔑 驗證碼：', code1, code2);
 
-                // 儲存到 Firebase
+                // 儲存 Firebase
                 await db.collection('verificationRequests').add({
                     email: email,
                     code1: code1,
                     code2: code2,
                     requestTime: requestTime,
-                    requestTimestamp: firebase.firestore.Timestamp.now(),
                     used: false,
                     createdAt: firebase.firestore.Timestamp.now()
                 });
@@ -153,24 +157,19 @@
                 // 發送郵件
                 await sendEmail(email, requestTime, code1, code2);
 
-                showStatus('✅ 驗證碼已處理完成！請檢查收件匣或垃圾郵件（3秒後跳轉）', 'success');
+                showStatus('✅ 驗證碼已發送！請檢查收件匣（垃圾郵件匣）3秒後跳轉', 'success');
                 
-                // 自動跳轉
                 setTimeout(() => {
                     window.location.href = 'verify.html?email=' + encodeURIComponent(email);
                 }, 2500);
                 
             } catch (error) {
                 console.error('❌ 錯誤：', error);
-                showStatus('❌ 系統錯誤，請按 F12 查看詳細資訊', 'error');
+                showStatus('❌ 系統錯誤，請重新嘗試', 'error');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = originalText;
             }
-        });
-
-        document.getElementById('userEmail').addEventListener('input', function() {
-            this.style.borderColor = this.checkValidity() ? '#4285f4' : '#e74c3c';
         });
     </script>
 </body>
