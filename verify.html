@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>會員驗證 - 步驟2</title>
+    <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore-compat.js"></script>
+</head>
+<body style="font-family: Arial, sans-serif; max-width: 500px; margin: 50px auto; padding: 20px;">
+    <h1>輸入驗證碼</h1>
+    <p>請輸入我們發送至您信箱的兩組驗證碼：</p>
+    
+    <form id="verifyForm">
+        <div style="margin-bottom: 20px;">
+            <label>驗證碼-1：</label><br>
+            <input type="text" id="code1" maxlength="5" required 
+                   style="width: 100%; padding: 10px; margin-top: 5px; text-transform: uppercase;">
+        </div>
+        <div style="margin-bottom: 20px;">
+            <label>驗證碼-2：</label><br>
+            <input type="text" id="code2" maxlength="5" required 
+                   style="width: 100%; padding: 10px; margin-top: 5px; text-transform: uppercase;">
+        </div>
+        <button type="submit" style="width: 100%; padding: 12px; background: #34a853; color: white; border: none; border-radius: 4px; font-size: 16px;">
+            驗證並成為會員
+        </button>
+    </form>
+    
+    <div id="status" style="margin-top: 20px; padding: 10px;"></div>
+    <div id="memberInfo" style="display: none; margin-top: 20px; padding: 20px; background: #e8f0fe; border-radius: 8px;"></div>
+
+    <script>
+        // Firebase 配置 (與網站1相同)
+        const firebaseConfig = {
+            apiKey: "AIzaSyDZK81m6lJowSHWRg3nabnWiIQQEYlKvp0",
+            authDomain: "nova-studio-service-2b937.firebaseapp.com",
+            projectId: "nova-studio-service-2b937",
+            storageBucket: "nova-studio-service-2b937.firebasestorage.app",
+            messagingSenderId: "920210282132",
+            appId: "1:920210282132:web:ac69242994fcf43557c681",
+            measurementId: "G-9J5BT7XDHZ"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        document.getElementById('verifyForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const code1 = document.getElementById('code1').value.toUpperCase();
+            const code2 = document.getElementById('code2').value.toUpperCase();
+            
+            const btn = e.target.querySelector('button');
+            btn.disabled = true;
+            btn.textContent = '驗證中...';
+
+            try {
+                // 查詢匹配的驗證碼
+                const snapshot = await db.collection('verificationRequests')
+                    .where('code1', '==', code1)
+                    .where('code2', '==', code2)
+                    .where('used', '==', false)
+                    .limit(1)
+                    .get();
+
+                if (snapshot.empty) {
+                    showStatus('驗證碼錯誤或已使用，請重新請求', 'error');
+                    return;
+                }
+
+                const doc = snapshot.docs[0];
+                // 標記為已使用
+                await doc.ref.update({
+                    used: true,
+                    verifiedAt: firebase.firestore.Timestamp.now()
+                });
+
+                const data = doc.data();
+                showMemberSuccess(data.email, data.requestTime.toDate());
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus('驗證失敗，請稍後再試', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '驗證並成為會員';
+            }
+        });
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.style.color = type === 'success' ? 'green' : 'red';
+        }
+
+        function showMemberSuccess(email, requestTime) {
+            document.getElementById('verifyForm').style.display = 'none';
+            document.getElementById('status').style.display = 'none';
+            
+            const memberInfo = document.getElementById('memberInfo');
+            memberInfo.style.display = 'block';
+            memberInfo.innerHTML = `
+                <h2 style="color: #34a853;">🎉 驗證成功！</h2>
+                <p><strong>歡迎會員：</strong>${email}</p>
+                <p><strong>驗證時間：</strong>${new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}</p>
+                <p>您現在已是正式會員！</p>
+            `;
+        }
+    </script>
+</body>
+</html>
