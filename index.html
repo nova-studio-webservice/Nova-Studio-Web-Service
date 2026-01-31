@@ -51,11 +51,11 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        // EmailJS 配置（你的金鑰已填入）
+        // ✅ 正確的 EmailJS 配置
         emailjs.init("To2oJpnpive7AotSz");
 
         const EMAILJS_CONFIG = {
-            serviceID: "service_xj6de2p",
+            serviceID: "service_f18cej6",    // ✅ 已修正！
             templateID: "template_4d7ffsc",
             publicKey: "To2oJpnpive7AotSz"
         };
@@ -82,8 +82,9 @@
 
         async function sendEmail(email, requestTime, code1, code2) {
             try {
+                console.log('📤 發送郵件到：', email);
                 const response = await emailjs.send(
-                    EMAILJS_CONFIG.serviceID,
+                    EMAILJS_CONFIG.serviceID,  // service_f18cej6
                     EMAILJS_CONFIG.templateID,
                     {
                         user: email,
@@ -94,12 +95,13 @@
                     },
                     EMAILJS_CONFIG.publicKey
                 );
-                console.log('✅ EmailJS 發送成功!', response.status);
+                console.log('✅ EmailJS 成功：', response.status);
                 return response;
             } catch (error) {
-                console.error('❌ EmailJS 發送失敗：', error);
-                // 即使郵件失敗，驗證碼已儲存到 Firebase，所以繼續流程
-                return { status: 200, text: 'Email failed but codes saved' };
+                console.error('❌ EmailJS 錯誤：', error);
+                // 即使郵件失敗，驗證碼已儲存到 Firebase
+                console.log('💾 驗證碼已儲存到 Firebase，可用 Console 查看');
+                return { status: 200 };
             }
         }
 
@@ -115,15 +117,13 @@
             const btn = document.getElementById('getCodeBtn');
             const originalText = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '⏳ 驗證中...';
+            btn.innerHTML = '⏳ 處理中...';
 
             try {
-                // reCAPTCHA v3 驗證
+                // reCAPTCHA 驗證
                 const recaptchaToken = await grecaptcha.execute(recaptchaSiteKey, {action: 'submit'});
                 
-                showStatus('🔐 驗證通過，正在生成驗證碼...', 'info');
-
-                // 生成兩個驗證碼
+                // 生成驗證碼
                 const code1 = generateCode();
                 const code2 = generateCode();
                 const requestTime = new Date().toLocaleString('zh-TW', { 
@@ -136,44 +136,42 @@
                     second: '2-digit'
                 });
 
-                console.log('🔑 生成驗證碼：', code1, code2);
+                console.log('🔑 你的驗證碼：', code1, ' ', code2);
+                console.log('📧 發送至：', email);
 
-                // 1. 儲存到 Firebase
-                const docRef = await db.collection('verificationRequests').add({
+                // 儲存到 Firebase
+                await db.collection('verificationRequests').add({
                     email: email,
                     code1: code1,
                     code2: code2,
                     requestTime: requestTime,
                     requestTimestamp: firebase.firestore.Timestamp.now(),
                     used: false,
-                    recaptchaToken: recaptchaToken,
                     createdAt: firebase.firestore.Timestamp.now()
                 });
 
-                // 2. 發送真實郵件
+                // 發送郵件
                 await sendEmail(email, requestTime, code1, code2);
 
-                console.log('✅ 完整流程成功！文檔ID：', docRef.id);
-                showStatus('✅ 驗證碼已發送到您的信箱！請檢查收件匣（3秒後跳轉）', 'success');
+                showStatus('✅ 驗證碼已處理完成！請檢查收件匣或垃圾郵件（3秒後跳轉）', 'success');
                 
-                // 3秒後自動跳轉到驗證頁面
+                // 自動跳轉
                 setTimeout(() => {
                     window.location.href = 'verify.html?email=' + encodeURIComponent(email);
                 }, 2500);
                 
             } catch (error) {
                 console.error('❌ 錯誤：', error);
-                showStatus('❌ 系統錯誤，請稍後再試', 'error');
+                showStatus('❌ 系統錯誤，請按 F12 查看詳細資訊', 'error');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = originalText;
             }
         });
 
-        // 美化輸入框
         document.getElementById('userEmail').addEventListener('input', function() {
             this.style.borderColor = this.checkValidity() ? '#4285f4' : '#e74c3c';
         });
     </script>
 </body>
-  </html>
+</html>
