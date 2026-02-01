@@ -17,7 +17,7 @@
         .status.戰隊成員 { background: #00b894; color: white; }
         input, button { padding: 12px 20px; border: none; border-radius: 10px; font-size: 16px; margin: 5px; }
         input { border: 2px solid #ddd; width: 250px; }
-        button { background: #667eea; color: white; cursor: pointer; transition: all 0.3s; }
+        button { background: #667eea; color: white; cursor: pointer; transition: all 0.3s; width: 100%; }
         button:hover { background: #5a67d8; transform: translateY(-2px); }
         button.danger { background: #e17055; }
         button.danger:hover { background: #d63031; }
@@ -26,6 +26,7 @@
         .hidden { display: none; }
         #adminPanel { border-top: 4px solid #fd79a8; }
         #adminResult { margin-top: 15px; padding: 10px; border-radius: 5px; }
+        .loading { text-align: center; color: #666; }
     </style>
 </head>
 <body>
@@ -36,9 +37,8 @@
         <div id="loginBox" class="login-box">
             <h2>歡迎加入 Nova Club</h2>
             <p>使用 Google 帳號註冊/登入</p>
-            <button id="googleSignInBtn" onclick="googleSignIn()" style="width: 100%; font-size: 18px;">
-                👤 使用 Google 登入
-            </button>
+            <button id="googleSignInBtn" onclick="googleSignIn()">👤 使用 Google 登入</button>
+            <div id="loading" class="loading hidden">正在載入...</div>
         </div>
 
         <!-- 會員主畫面 -->
@@ -46,12 +46,12 @@
             <h2>歡迎，<span id="userName"></span>！</h2>
             <div id="memberCode" class="member-code">載入中...</div>
             <div id="memberStatus" class="status">載入中...</div>
-            <button onclick="signOut()" style="width: 100%;">登出</button>
+            <button onclick="signOut()">登出</button>
         </div>
 
         <!-- 管理員後台 -->
         <div id="adminPanel" class="admin-panel hidden">
-            <h2>🔧 管理員後台 <span style="color:#fd79a8;">(僅限 oliver2013.tw@gmail.com)</span></h2>
+            <h2>🔧 管理員後台 <span style="color:#fd79a8;">(oliver2013.tw@gmail.com)</span></h2>
             <input type="text" id="adminCodeInput" placeholder="輸入會員代號 (如：A7B9C2D4E6)" maxlength="10">
             <br>
             <button onclick="addToTeam()">✅ 加入戰隊</button>
@@ -87,26 +87,27 @@
             return code;
         }
 
-        // Google 登入
-        async function googleSignIn() {
-            try {
-                if (auth.currentUser) {
-                    loadUserDashboard();
-                    return;
-                }
-
-                const provider = new firebase.auth.GoogleAuthProvider();
-                provider.setCustomParameters({
-                    prompt: 'select_account'
-                });
-
-                const result = await auth.signInWithPopup(provider);
-                const user = result.user;
-                await setupUserProfile(user);
-            } catch (error) {
-                alert('登入失敗：' + error.message);
-            }
+        // Google 登入 - 使用重導向模式
+        function googleSignIn() {
+            document.getElementById('loading').classList.remove('hidden');
+            const provider = new firebase.auth.GoogleAuthProvider();
+            provider.setCustomParameters({
+                prompt: 'select_account'
+            });
+            auth.signInWithRedirect(provider);
         }
+
+        // 檢查重導向結果
+        firebase.auth().getRedirectResult().then(function(result) {
+            document.getElementById('loading').classList.add('hidden');
+            if (result.credential) {
+                // 這是重導向回來後處理
+                setupUserProfile(result.user);
+            }
+        }).catch(function(error) {
+            document.getElementById('loading').classList.add('hidden');
+            console.error('登入錯誤：', error);
+        });
 
         // 建立/更新會員資料
         async function setupUserProfile(user) {
@@ -117,10 +118,12 @@
                 let memberCode = generateMemberCode();
                 // 確保唯一性
                 let unique = false;
-                while (!unique) {
+                let attempts = 0;
+                while (!unique && attempts < 10) {
                     const check = await db.collection('users').where('memberCode', '==', memberCode).get();
                     if (check.empty) unique = true;
                     else memberCode = generateMemberCode();
+                    attempts++;
                 }
                 
                 await userRef.set({
@@ -135,9 +138,7 @@
 你的會員代號：
 ' + memberCode + '
 
-請記下來或截圖保存！
-
-分享給朋友加入 Nova Club！');
+請記下來或截圖保存！');
             }
             loadUserDashboard();
         }
@@ -235,14 +236,10 @@
             });
         }
 
-        // 監聽登入狀態
+        // 監聽登入狀態變化
         auth.onAuthStateChanged((user) => {
             if (user) {
                 loadUserDashboard();
-            } else {
-                document.getElementById('loginBox').classList.remove('hidden');
-                document.getElementById('dashboard').classList.add('hidden');
-                document.getElementById('adminPanel').classList.add('hidden');
             }
         });
     </script>
