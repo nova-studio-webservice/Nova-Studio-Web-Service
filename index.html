@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nova Club 會員平台</title>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        .login-box, .dashboard, .admin-panel { background: white; border-radius: 20px; padding: 30px; margin: 20px 0; box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
+        .status { padding: 15px; border-radius: 10px; margin: 10px 0; font-weight: bold; }
+        .status.未入戰隊 { background: #ffeaa7; color: #fdcb6e; }
+        .status.戰隊成員 { background: #00b894; color: white; }
+        input, button { padding: 12px 20px; border: none; border-radius: 10px; font-size: 16px; margin: 5px; }
+        input { border: 2px solid #ddd; width: 250px; }
+        button { background: #667eea; color: white; cursor: pointer; transition: all 0.3s; }
+        button:hover { background: #5a67d8; transform: translateY(-2px); }
+        button.danger { background: #e17055; }
+        button.danger:hover { background: #d63031; }
+        .member-code { font-size: 24px; font-weight: bold; color: #00cec9; background: #f8f9fa; padding: 15px; border-radius: 10px; margin: 10px 0; }
+        h1 { color: white; text-align: center; margin-bottom: 30px; }
+        .hidden { display: none; }
+        #adminPanel { border-top: 4px solid #fd79a8; }
+        #adminResult { margin-top: 15px; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌌 Nova Club 會員平台</h1>
+        
+        <!-- 登入區塊 -->
+        <div id="loginBox" class="login-box">
+            <h2>歡迎加入 Nova Club</h2>
+            <p>使用 Google 帳號註冊/登入</p>
+            <button id="googleSignInBtn" onclick="googleSignIn()" style="width: 100%; font-size: 18px;">
+                👤 使用 Google 登入
+            </button>
+        </div>
+
+        <!-- 會員主畫面 -->
+        <div id="dashboard" class="dashboard hidden">
+            <h2>歡迎，<span id="userName"></span>！</h2>
+            <div id="memberCode" class="member-code">載入中...</div>
+            <div id="memberStatus" class="status">載入中...</div>
+            <button onclick="signOut()" style="width: 100%;">登出</button>
+        </div>
+
+        <!-- 管理員後台 -->
+        <div id="adminPanel" class="admin-panel hidden">
+            <h2>🔧 管理員後台 <span style="color:#fd79a8;">(僅限 oliver2013.tw@gmail.com)</span></h2>
+            <input type="text" id="adminCodeInput" placeholder="輸入會員代號 (如：A7B9C2D4E6)" maxlength="10">
+            <br>
+            <button onclick="addToTeam()">✅ 加入戰隊</button>
+            <button onclick="removeFromTeam()" class="danger">❌ 移除戰隊權限</button>
+            <button onclick="removeMember()" class="danger">🗑️ 移除會員</button>
+            <div id="adminResult"></div>
+        </div>
+    </div>
+
+    <script>
+        // Firebase 配置
+        const firebaseConfig = {
+            apiKey: "AIzaSyCzd6YU9w9v8Gn6Q1-4ydy0vpHpKFtz8wU",
+            authDomain: "nova-studio-service.firebaseapp.com",
+            projectId: "nova-studio-service",
+            storageBucket: "nova-studio-service.firebasestorage.app",
+            messagingSenderId: "1081914055644",
+            appId: "1:1081914055644:web:9cb37c52abfd548f678d19"
+        };
+
+        // 初始化 Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // 生成唯一會員代號 (10位英數混合)
+        function generateMemberCode() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let code = '';
+            for (let i = 0; i < 10; i++) {
+                code += chars.charAt(Math.random() * chars.length | 0);
+            }
+            return code;
+        }
+
+        // Google 登入
+        async function googleSignIn() {
+            try {
+                if (auth.currentUser) {
+                    loadUserDashboard();
+                    return;
+                }
+
+                const provider = new firebase.auth.GoogleAuthProvider();
+                provider.setCustomParameters({
+                    prompt: 'select_account'
+                });
+
+                const result = await auth.signInWithPopup(provider);
+                const user = result.user;
+                await setupUserProfile(user);
+            } catch (error) {
+                alert('登入失敗：' + error.message);
+            }
+        }
+
+        // 建立/更新會員資料
+        async function setupUserProfile(user) {
+            const userRef = db.collection('users').doc(user.uid);
+            const doc = await userRef.get();
+            
+            if (!doc.exists) {
+                let memberCode = generateMemberCode();
+                // 確保唯一性
+                let unique = false;
+                while (!unique) {
+                    const check = await db.collection('users').where('memberCode', '==', memberCode).get();
+                    if (check.empty) unique = true;
+                    else memberCode = generateMemberCode();
+                }
+                
+                await userRef.set({
+                    uid: user.uid,
+                    email: user.email,
+                    displayName: user.displayName,
+                    memberCode: memberCode,
+                    status: '未入戰隊',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                alert('🎉 歡迎新會員！
+你的會員代號：
+' + memberCode + '
+
+請記下來或截圖保存！
+
+分享給朋友加入 Nova Club！');
+            }
+            loadUserDashboard();
+        }
+
+        // 載入會員主畫面
+        async function loadUserDashboard() {
+            const user = auth.currentUser;
+            if (!user) return;
+
+            document.getElementById('loginBox').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+            document.getElementById('userName').textContent = user.displayName;
+            
+            const userRef = db.collection('users').doc(user.uid);
+            const doc = await userRef.get();
+            const data = doc.data();
+            
+            document.getElementById('memberCode').innerHTML = 
+                '會員代號：<br><strong>' + data.memberCode + '</strong>';
+            const statusEl = document.getElementById('memberStatus');
+            statusEl.textContent = '目前狀態：' + data.status;
+            statusEl.className = 'status ' + data.status;
+
+            // 檢查管理員權限
+            if (user.email === 'oliver2013.tw@gmail.com') {
+                document.getElementById('adminPanel').classList.remove('hidden');
+            }
+        }
+
+        // 管理員功能：加入戰隊
+        async function addToTeam() {
+            const code = document.getElementById('adminCodeInput').value.trim().toUpperCase();
+            if (!code) return alert('請輸入會員代號');
+            
+            const users = await db.collection('users').where('memberCode', '==', code).get();
+            if (users.empty) return alert('❌ 找不到會員代號：' + code);
+            
+            const userDoc = users.docs[0];
+            const userData = userDoc.data();
+            if (userData.status === '戰隊成員') {
+                return alert('此會員已在戰隊中');
+            }
+            
+            await userDoc.ref.update({ status: '戰隊成員' });
+            document.getElementById('adminResult').innerHTML = 
+                '<p style="color:green;font-weight:bold;">✅ ' + userData.displayName + ' (' + code + ') 已加入戰隊！</p>';
+            document.getElementById('adminCodeInput').value = '';
+        }
+
+        // 管理員功能：移除戰隊權限
+        async function removeFromTeam() {
+            const code = document.getElementById('adminCodeInput').value.trim().toUpperCase();
+            if (!code) return alert('請輸入會員代號');
+            
+            const users = await db.collection('users').where('memberCode', '==', code).get();
+            if (users.empty) return alert('❌ 找不到會員代號：' + code);
+            
+            const userDoc = users.docs[0];
+            const userData = userDoc.data();
+            if (userData.status === '未入戰隊') {
+                return alert('此會員不在戰隊中');
+            }
+            
+            await userDoc.ref.update({ status: '未入戰隊' });
+            document.getElementById('adminResult').innerHTML = 
+                '<p style="color:orange;font-weight:bold;">🔄 ' + userData.displayName + ' (' + code + ') 已移除戰隊權限！</p>';
+            document.getElementById('adminCodeInput').value = '';
+        }
+
+        // 管理員功能：移除會員
+        async function removeMember() {
+            const code = document.getElementById('adminCodeInput').value.trim().toUpperCase();
+            if (!code) return alert('請輸入會員代號');
+            if (!confirm('⚠️ 確定要永久刪除會員代號 ' + code + ' 嗎？
+此動作無法復原！')) return;
+            
+            const users = await db.collection('users').where('memberCode', '==', code).get();
+            if (users.empty) return alert('❌ 找不到會員代號：' + code);
+            
+            const userDoc = users.docs[0];
+            const userData = userDoc.data();
+            await userDoc.ref.delete();
+            document.getElementById('adminResult').innerHTML = 
+                '<p style="color:red;font-weight:bold;">🗑️ 已永久刪除會員：' + userData.displayName + ' (' + code + ')</p>';
+            document.getElementById('adminCodeInput').value = '';
+        }
+
+        // 登出
+        function signOut() {
+            auth.signOut().then(() => {
+                document.getElementById('dashboard').classList.add('hidden');
+                document.getElementById('adminPanel').classList.add('hidden');
+                document.getElementById('loginBox').classList.remove('hidden');
+                document.getElementById('adminResult').innerHTML = '';
+            });
+        }
+
+        // 監聽登入狀態
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                loadUserDashboard();
+            } else {
+                document.getElementById('loginBox').classList.remove('hidden');
+                document.getElementById('dashboard').classList.add('hidden');
+                document.getElementById('adminPanel').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
